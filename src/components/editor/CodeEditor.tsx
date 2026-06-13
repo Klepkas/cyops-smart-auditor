@@ -27,7 +27,7 @@ interface CodeEditorProps {
  * - `lineNumbers()` shows the gutter.
  * - The wrapper fills the parent (`height: 100%`), and the inner
  *   `.cm-scroller` is set to `overflow: auto` so very long lines scroll
- *   horizontally inside the rail instead of wrapping — important for the
+ *   horizontally inside the rail instead of wrapping — required for the
  *   360 px responsive pass in AC-10.
  */
 function CodeEditor({
@@ -43,7 +43,10 @@ function CodeEditor({
   const extensions = useMemo<Extension[]>(() => {
     const exts: Extension[] = [
       lineNumbers(),
-      EditorView.lineWrapping,
+      // No `EditorView.lineWrapping` here on purpose: AC-10 requires the
+      // editor to scroll horizontally (not wrap) when the viewport
+      // shrinks down to 360 px. The `.cm-scroller` theme rule above
+      // (`overflow: auto`) provides the horizontal scrollbar.
       indentOnInput(),
       javascript({ typescript: false }),
       oneDark,

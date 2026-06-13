@@ -21,8 +21,8 @@ function EditorToolbar({
   actions,
 }: EditorToolbarProps): JSX.Element {
   return (
-    <div className="flex items-center justify-between gap-3 border-b border-border-subtle bg-surface-elevated/60 px-4 py-2">
-      <div className="flex min-w-0 items-center gap-3">
+    <div className="flex items-center justify-between gap-2 border-b border-border-subtle bg-surface-elevated/60 px-3 py-2 sm:gap-3 sm:px-4">
+      <div className="flex min-w-0 items-center gap-2 sm:gap-3">
         <span
           aria-hidden="true"
           className="grid h-7 w-7 shrink-0 place-items-center rounded-md bg-brand-500/20 text-brand-300 ring-1 ring-brand-500/30"
@@ -45,13 +45,18 @@ function EditorToolbar({
           <p className="truncate text-sm font-medium text-text-primary">
             {filename}
           </p>
-          <p className="font-mono text-[11px] text-text-muted">
+          {/* Line/char count is hidden below the `sm` breakpoint so the
+              toolbar still fits at the 360 px responsive pass (AC-10).
+              The icon-only action buttons on the right provide enough
+              context at that width — the title attributes still surface
+              the full labels. */}
+          <p className="hidden font-mono text-[11px] text-text-muted sm:block">
             {lineCount} {lineCount === 1 ? 'line' : 'lines'} ·{' '}
             {charCount.toLocaleString()} chars
           </p>
         </div>
       </div>
-      {actions && <div className="flex shrink-0 items-center gap-2">{actions}</div>}
+      {actions && <div className="flex shrink-0 items-center gap-1.5 sm:gap-2">{actions}</div>}
     </div>
   );
 }

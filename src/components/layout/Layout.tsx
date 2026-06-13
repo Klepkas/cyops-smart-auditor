@@ -25,7 +25,7 @@ function Layout(): JSX.Element {
         <Topbar onOpenMobileNav={openDrawer} />
         <main
           id="main-content"
-          className="flex-1 overflow-y-auto bg-surface px-4 py-6 sm:px-6 lg:px-8"
+          className="min-w-0 flex-1 overflow-x-hidden overflow-y-auto bg-surface px-4 py-6 sm:px-6 lg:px-8"
         >
           <Outlet />
         </main>

@@ -127,20 +127,22 @@ function Auditor(): JSX.Element {
         onClick={handleReset}
         disabled={isScanning}
         title="Restore the placeholder VulnerableVault.sol"
-        className="focus-ring inline-flex items-center gap-1.5 rounded-md border border-border-subtle bg-surface-muted px-2.5 py-1.5 text-xs font-medium text-text-secondary transition hover:bg-surface-elevated hover:text-text-primary disabled:cursor-not-allowed disabled:opacity-50"
+        aria-label="Restore the placeholder VulnerableVault.sol"
+        className="focus-ring inline-flex items-center gap-1.5 rounded-md border border-border-subtle bg-surface-muted p-1.5 text-xs font-medium text-text-secondary transition hover:bg-surface-elevated hover:text-text-primary disabled:cursor-not-allowed disabled:opacity-50 sm:px-2.5 sm:py-1.5"
       >
         <RotateCcw aria-hidden="true" className="h-3.5 w-3.5" />
-        <span>Reset</span>
+        <span className="hidden sm:inline">Reset</span>
       </button>
       <button
         type="button"
         onClick={handleClear}
         disabled={isScanning}
         title="Clear the editor"
-        className="focus-ring inline-flex items-center gap-1.5 rounded-md border border-border-subtle bg-surface-muted px-2.5 py-1.5 text-xs font-medium text-text-secondary transition hover:bg-surface-elevated hover:text-text-primary disabled:cursor-not-allowed disabled:opacity-50"
+        aria-label="Clear the editor"
+        className="focus-ring inline-flex items-center gap-1.5 rounded-md border border-border-subtle bg-surface-muted p-1.5 text-xs font-medium text-text-secondary transition hover:bg-surface-elevated hover:text-text-primary disabled:cursor-not-allowed disabled:opacity-50 sm:px-2.5 sm:py-1.5"
       >
         <Eraser aria-hidden="true" className="h-3.5 w-3.5" />
-        <span>Clear</span>
+        <span className="hidden sm:inline">Clear</span>
       </button>
     </>
   );
