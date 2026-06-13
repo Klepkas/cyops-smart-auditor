@@ -14,15 +14,17 @@ const config: Config = {
   theme: {
     extend: {
       colors: {
-        // Indigo→violet scale used for primary actions, focus rings,
-        // active-nav indicators, and the topbar brand.
+        // Indigo→violet scale. The plan locks the two endpoints
+        // (#6366f1 = 500, #a78bfa = 300) so lighter shades read as violet
+        // and darker shades read as indigo, with smooth interpolation
+        // between them.
         brand: {
           50: '#eef0ff',
           100: '#dde1ff',
-          200: '#bcc4ff',
-          300: '#9aa6ff',
-          400: '#7c8aff',
-          500: '#6366f1', // base
+          200: '#c4b5fd',
+          300: '#a78bfa', // violet endpoint (plan)
+          400: '#8a85f5',
+          500: '#6366f1', // indigo endpoint / base (plan)
           600: '#5457dc',
           700: '#4447b3',
           800: '#33358a',
