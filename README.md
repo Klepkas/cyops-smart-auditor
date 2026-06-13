@@ -82,6 +82,20 @@ from a clean clone.
 | `npm run preview`   | Serve the production build locally.                                    |
 | `npm run typecheck` | `tsc --noEmit` for the app + node configs. Used by CI.                 |
 
+### Verifying a change
+
+A fast pre-commit loop:
+
+```bash
+npm run typecheck     # exits 0 means no type regressions
+npm run build         # type-checks + produces dist/
+npm run dev           # manual smoke-test on http://127.0.0.1:5173
+```
+
+The dev server is bound to `127.0.0.1` only (see `vite.config.ts`)
+which keeps the Vite 5 / esbuild dev-server audit warning off the
+network surface.
+
 ## Project structure
 
 ```
@@ -139,12 +153,18 @@ src/
   slides in from a hamburger drawer below. The risk-score gauge
   shrinks to 180 px on phones; the rest of the report cards stack
   vertically by default (`flex-col` → `sm:flex-row`).
+- **Code-splitting.** `src/App.tsx` lazy-loads the Auditor route via
+  `React.lazy(() => import('./pages/Auditor'))` wrapped in
+  `<Suspense fallback={<RouteFallback />}>`. The CodeMirror and
+  Recharts vendor chunks ship in their own files and only download
+  when the user first visits `/auditor`. See the **Bundle layout**
+  table below.
 
 ### Simulated-scan caveat
 
 The 4 agents do **not** call out to a real static-analysis engine.
-`runScan` runs in-browser, sleeps for a jittered 500-900 ms per agent
-(total 2.0-3.6 s), and produces a typed `Report` whose
+`runScan` runs in-browser, sleeps for a jittered 650-900 ms per agent
+(total ~2.6-3.6 s), and produces a typed `Report` whose
 `vulnerabilities` come from the regex bank. The "AI Security
 Reviewer" name is a deliberate nod to the multi-agent LLM pattern but
 the engine does not hit an LLM API in v1 — suggestions are templated
@@ -158,13 +178,35 @@ Tested on the latest two stable versions of Chrome, Firefox, and
 Safari. Uses `matchMedia`, `localStorage`, `AbortController`,
 `requestAnimationFrame`, and ES2022 syntax (no legacy transpilation).
 
+## Bundle layout (after code-splitting)
+
+The Auditor page is the only route that needs CodeMirror 6 and
+Recharts, so it is `React.lazy()`-loaded — the user never pays for
+the editor or the gauge library until they navigate to `/auditor`.
+Approximate chunk sizes (from `npm run build`):
+
+| Chunk                              | Min    | Gzip   | Loaded    |
+|------------------------------------|--------|--------|-----------|
+| `index-*.js` (main shell)          | 40 kB  | 11 kB  | initial   |
+| `vendor-DS6lB4M3.js` (React etc.)  | 382 kB | 131 kB | initial   |
+| `vendor-router-*.js`               |  14 kB |   5 kB | initial   |
+| `index-*.css`                      |  31 kB |   6 kB | initial   |
+| **Initial total**                  | **~467 kB** | **~153 kB** | first paint |
+| `Auditor-*.js`                     |  42 kB |  13 kB | on `/auditor` |
+| `vendor-codemirror-*.js`           | 371 kB | 120 kB | on `/auditor` |
+| `vendor-recharts-*.js`             | 337 kB |  84 kB | on `/auditor` |
+
+`History`, `Dashboard`, and `Settings` only ever need the initial
+chunks — they never load CodeMirror or Recharts.
+
 ## Known limitations
 
 - **No real static analysis.** See the simulated-scan caveat above.
-- **Single-page bundle is ~1.2 MB minified (~360 kB gzip).** The bulk
-  is CodeMirror 6 and Recharts. Code-splitting the Auditor page
-  (`React.lazy`) is tracked as a follow-up — for localhost the
-  warning is not blocking.
+- **Total bundle is ~1.2 MB minified (~360 kB gzip)** when all chunks
+  are loaded (Auditor + chart + editor + main shell). After
+  code-splitting, the initial paint is **~467 kB / ~153 kB gzip** and
+  the Auditor-only chunks (~750 kB / ~217 kB gzip) only download
+  when the user actually opens the Auditor.
 - **Settings are per-browser.** No sync between devices; "Reset all
   data" clears the local browser only.
 - **Vite 5 / esbuild dev-server audit warning.** Acknowledged and
