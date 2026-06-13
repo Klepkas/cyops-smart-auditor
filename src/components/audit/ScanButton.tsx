@@ -11,8 +11,11 @@ interface ScanButtonProps {
  *
  * The label and icon swap while a scan is running so the user gets
  * immediate feedback when the click registers. The button is also
- * disabled while a scan is in flight to prevent double-submission; the
- * actual cancellation lives on the progress UI in AC-5, not here.
+ * disabled while a scan is in flight to prevent double-submission;
+ * cancellation is exposed by the progress panel in
+ * `AgentProgress.tsx` rather than by mutating this button into a
+ * destructive variant (cancellation is a defensive, reversible
+ * action and deserves its own affordance).
  */
 function ScanButton({
   onClick,
