@@ -493,6 +493,16 @@ function computeRiskScore(
 // ---------------------------------------------------------------------------
 
 /**
+ * Optional knobs the Auditor can pass to override the engine defaults.
+ * Kept narrow on purpose — the engine only exposes the two levers the
+ * Settings page lets the user change.
+ */
+export interface RunScanOptions {
+  readonly sensitivity?: RiskSensitivity;
+  readonly solidityVersion?: string;
+}
+
+/**
  * Run the simulated multi-agent scan against `code` and resolve with a
  * complete `Report`. The function is deterministic with respect to
  * `code` (same code → same report) and cancellable via `signal`.
@@ -503,11 +513,14 @@ function computeRiskScore(
  * - `signal` aborts the entire scan; in-flight `setTimeout`s are
  *   cleared, the current agent is marked `cancelled`, and the
  *   returned promise rejects with an `AbortError`.
+ * - `options` lets the caller override the default sensitivity and
+ *   Solidity version; both are recorded in the resulting `Report`.
  */
 export async function runScan(
   code: string,
   onProgress: (update: AgentProgressUpdate) => void,
   signal: AbortSignal,
+  options: RunScanOptions = {},
 ): Promise<Report> {
   if (signal.aborted) {
     throw makeAbortError();
@@ -569,8 +582,8 @@ export async function runScan(
   contributions.push(makeContribution(gasState, gasTips.length));
 
   const totalDurationMs = Math.round(performance.now() - startMs);
-  const sensitivity: RiskSensitivity = DEFAULT_SENSITIVITY;
-  const solidityVersion = DEFAULT_SOLIDITY_VERSION;
+  const sensitivity: RiskSensitivity = options.sensitivity ?? DEFAULT_SENSITIVITY;
+  const solidityVersion = options.solidityVersion ?? DEFAULT_SOLIDITY_VERSION;
   const riskScore = computeRiskScore(allVulns, sensitivity);
   const summary = buildSummary(codeHash, allVulns, riskScore);
 

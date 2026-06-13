@@ -1,12 +1,10 @@
 import { NavLink } from 'react-router-dom';
-import { LayoutDashboard, ShieldCheck, History, Settings as SettingsIcon } from 'lucide-react';
-import { useMediaQuery } from '../../hooks/useMediaQuery';
-import { useUIState } from '../../hooks/useUIState';
+import { LayoutDashboard, ShieldCheck, History, Settings as SettingsIcon, type LucideIcon } from 'lucide-react';
 
 interface NavItem {
   to: string;
   label: string;
-  Icon: typeof LayoutDashboard;
+  Icon: LucideIcon;
 }
 
 /**
@@ -21,49 +19,25 @@ const NAV_ITEMS: readonly NavItem[] = [
   { to: '/settings', label: 'Settings', Icon: SettingsIcon },
 ] as const;
 
-const DESKTOP_QUERY = '(min-width: 1024px)';
+interface SidebarContentProps {
+  /**
+   * `true` when the sidebar is rendered inside the mobile drawer
+   * (so labels are always shown, never collapsed to icons).
+   */
+  /** Called when a nav link is clicked inside the drawer — closes the drawer. */
+  onNavigate?: () => void;
+}
 
 /**
- * Persistent left sidebar.
- *
- * Collapse rules (last one wins):
- *   1. The viewport is < 1024px → icon-only rail (auto).
- *   2. The user manually toggled the rail via the topbar chevron and
- *      that override is stored in `localStorage` → honour the override
- *      regardless of viewport.
- *   3. Otherwise → expanded at >= 1024px.
- *
- * Active route gets a brand-tinted background plus a 2 px brand left
- * border. Inactive items are dim and brighten on hover.
+ * Sidebar body — shared between the persistent desktop rail and the
+ * mobile drawer. The parent decides which to render based on viewport
+ * width.
  */
-function Sidebar(): JSX.Element {
-  // `isDesktop` is the auto-collapse rule (no user override).
-  const isDesktop = useMediaQuery(DESKTOP_QUERY);
-  const { userSidebarCollapsed } = useUIState();
-
-  // Effective collapsed state: an explicit user override beats the media
-  // query. `null` = follow the media query.
-  const userWantsCollapsed = userSidebarCollapsed === true;
-  const userWantsExpanded = userSidebarCollapsed === false;
-  const collapsed = userWantsCollapsed || (!userWantsExpanded && !isDesktop);
-  const isDesktopAndNotOverridden = isDesktop && userSidebarCollapsed === null;
-  const showLabels = isDesktopAndNotOverridden;
-
-  const widthClass = showLabels ? 'w-60' : 'w-[72px]';
-  const labelClass = showLabels
-    ? 'opacity-100'
-    : 'opacity-0 pointer-events-none w-0 overflow-hidden';
-
+function SidebarContent({
+  onNavigate,
+}: SidebarContentProps): JSX.Element {
   return (
-    <aside
-      data-collapsed={collapsed ? 'true' : 'false'}
-      aria-label="Primary"
-      className={[
-        'sticky top-0 z-30 flex h-screen shrink-0 flex-col border-r border-border-subtle bg-surface-panel',
-        'transition-[width] duration-200 ease-out',
-        widthClass,
-      ].join(' ')}
-    >
+    <>
       <div className="flex h-16 items-center gap-3 border-b border-border-subtle px-4">
         <span
           aria-hidden="true"
@@ -82,7 +56,7 @@ function Sidebar(): JSX.Element {
             <path d="m9 12 2.2 2.2L15 9" />
           </svg>
         </span>
-        <div className={`min-w-0 transition-opacity duration-200 ${labelClass}`}>
+        <div className="min-w-0">
           <p className="truncate text-[11px] uppercase tracking-widest text-text-muted">
             Cyops
           </p>
@@ -98,7 +72,7 @@ function Sidebar(): JSX.Element {
             <li key={to}>
               <NavLink
                 to={to}
-                title={showLabels ? undefined : label}
+                onClick={onNavigate}
                 aria-label={label}
                 className={({ isActive }) =>
                   [
@@ -126,11 +100,7 @@ function Sidebar(): JSX.Element {
                           : 'text-text-muted group-hover:text-text-primary',
                       ].join(' ')}
                     />
-                    <span
-                      className={`min-w-0 truncate transition-opacity duration-200 ${labelClass}`}
-                    >
-                      {label}
-                    </span>
+                    <span className="min-w-0 truncate">{label}</span>
                   </>
                 )}
               </NavLink>
@@ -140,18 +110,14 @@ function Sidebar(): JSX.Element {
       </nav>
 
       <div className="border-t border-border-subtle p-3">
-        <div
-          className={`flex items-center gap-3 rounded-lg bg-surface-elevated p-2.5 ${
-            showLabels ? '' : 'justify-center'
-          }`}
-        >
+        <div className="flex items-center gap-3 rounded-lg bg-surface-elevated p-2.5">
           <span
             aria-hidden="true"
             className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-brand-500/25 text-xs font-semibold text-brand-200"
           >
             v1
           </span>
-          <div className={`min-w-0 transition-opacity duration-200 ${labelClass}`}>
+          <div className="min-w-0">
             <p className="truncate text-xs font-medium text-text-primary">
               Simulated scan
             </p>
@@ -161,8 +127,58 @@ function Sidebar(): JSX.Element {
           </div>
         </div>
       </div>
-    </aside>
+    </>
+  );
+}
+
+interface SidebarProps {
+  /** Open/close state for the mobile drawer (no-op on desktop). */
+  drawerOpen: boolean;
+  onDrawerClose: () => void;
+}
+
+/**
+ * Persistent left sidebar (desktop rail) + a mobile drawer that
+ * slides in from the left. The rail is hidden on screens < 1024px
+ * and the drawer is mounted into the same component so the
+ * `Layout` only needs one `<Sidebar />` element.
+ *
+ * Active route gets a brand-tinted background plus a 2 px brand left
+ * border. Inactive items are dim and brighten on hover.
+ */
+function Sidebar({ drawerOpen, onDrawerClose }: SidebarProps): JSX.Element {
+  return (
+    <>
+      <aside
+        aria-label="Primary"
+        className="sticky top-0 z-30 hidden h-screen w-60 shrink-0 flex-col border-r border-border-subtle bg-surface-panel transition-[width] duration-200 ease-out lg:flex"
+      >
+        <SidebarContent />
+      </aside>
+      {drawerOpen && (
+        <MobileSidebarDrawer open={drawerOpen} onClose={onDrawerClose} />
+      )}
+    </>
+  );
+}
+
+interface MobileSidebarDrawerProps {
+  open: boolean;
+  onClose: () => void;
+}
+
+// Inline import to avoid circular deps at module-load time.
+import Drawer from '../ui/Drawer';
+
+function MobileSidebarDrawer({ open, onClose }: MobileSidebarDrawerProps): JSX.Element {
+  return (
+    <Drawer open={open} onClose={onClose} ariaLabel="Primary navigation">
+      <div className="flex h-full w-full flex-col">
+        <SidebarContent onNavigate={onClose} />
+      </div>
+    </Drawer>
   );
 }
 
 export default Sidebar;
+export { SidebarContent, NAV_ITEMS };

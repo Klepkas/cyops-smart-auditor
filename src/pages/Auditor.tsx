@@ -1,25 +1,35 @@
-import { useCallback, useMemo, useState } from 'react';
-import { RotateCcw, Eraser, FileBadge2, Sparkles, X } from 'lucide-react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
+import { RotateCcw, Eraser, FileBadge2, X, Sparkles, Gauge as GaugeIcon, ListChecks, Lightbulb, Fuel } from 'lucide-react';
 import PageHeader from '../components/ui/PageHeader';
 import CodeEditor from '../components/editor/CodeEditor';
 import EditorToolbar from '../components/editor/EditorToolbar';
 import ScanButton from '../components/audit/ScanButton';
 import AgentProgress from '../components/audit/AgentProgress';
+import RiskScoreGauge from '../components/audit/RiskScoreGauge';
+import VulnerabilityTable from '../components/audit/VulnerabilityTable';
+import SuggestionCard from '../components/audit/SuggestionCard';
+import GasTipsList from '../components/audit/GasTipsList';
 import { useScan } from '../hooks/useScan';
+import { useScanHistory } from '../hooks/useScanHistory';
+import { useSettings } from '../hooks/useSettings';
+import { useMediaQuery } from '../hooks/useMediaQuery';
 import { SAMPLE_CONTRACT, SAMPLE_CONTRACT_NAME } from '../data/sampleContract';
-import type { Report, Severity } from '../lib/reportTypes';
+import type { Report, Severity, Vulnerability } from '../lib/reportTypes';
 
 /**
  * Auditor page — large Solidity editor + the multi-agent scan
- * pipeline (AC-4 + AC-5). After a scan completes a slim "Report ready"
- * card previews the risk score; the full Audit Report (gauge,
- * vulnerability table, suggestions, gas tips) lands in AC-6.
+ * pipeline (AC-4 + AC-5) + the polished Audit Report (AC-6).
  *
- * The pipeline is driven by `useScan`, which owns the
- * `AbortController` and exposes a stable `start` / `cancel` API.
+ * Pipeline state is owned by `useScan`. The report panel is rendered
+ * in the same `<div>` as the editor and progress panel so the page
+ * reads top-to-bottom: code → scan → result.
  */
 function Auditor(): JSX.Element {
   const [code, setCode] = useState<string>(SAMPLE_CONTRACT);
+  const { history, add: addToHistory } = useScanHistory();
+  const { settings } = useSettings();
+  const [searchParams, setSearchParams] = useSearchParams();
 
   const {
     isScanning,
@@ -33,7 +43,52 @@ function Auditor(): JSX.Element {
     start,
     cancel,
     reset,
+    setScanOptions,
   } = useScan();
+
+  // Keep the engine options in sync with the latest settings so the
+  // next scan uses the user's current Solidity version + sensitivity.
+  useEffect(() => {
+    setScanOptions({
+      sensitivity: settings.sensitivity,
+      solidityVersion: settings.solidityVersion,
+    });
+  }, [settings.sensitivity, settings.solidityVersion, setScanOptions]);
+
+  // Persist every completed report into history (Dashboard + History
+  // pages consume this). Capped at 100 entries FIFO by useScanHistory.
+  useEffect(() => {
+    if (isComplete && report) addToHistory(report);
+  }, [isComplete, report, addToHistory]);
+
+  // Re-open a historical report when arriving with ?report=<id>.
+  // We hold the report in a piece of local state so the param can be
+  // cleared without dropping the report from view.
+  const reopenId = searchParams.get('report');
+  const reopenedReport = useMemo<Report | null>(() => {
+    if (!reopenId) return null;
+    return history.find((r) => r.id === reopenId) ?? null;
+  }, [reopenId, history]);
+  const [activeReport, setActiveReport] = useState<Report | null>(null);
+  useEffect(() => {
+    if (reopenedReport) {
+      setActiveReport(reopenedReport);
+      // Strip the param so a refresh doesn't re-trigger.
+      const next = new URLSearchParams(searchParams);
+      next.delete('report');
+      setSearchParams(next, { replace: true });
+    }
+  }, [reopenedReport, searchParams, setSearchParams]);
+
+  // The report we render is whichever was produced first: a fresh
+  // scan, then a reopened one.
+  const displayedReport: Report | null = report ?? activeReport;
+  const showReport = isComplete || activeReport !== null;
+
+  // Shrink the risk-score gauge below the `sm` breakpoint (640 px) so
+  // it fits the 360 px responsive pass without horizontal overflow.
+  const isSmallScreen = useMediaQuery('(max-width: 639px)');
+  const gaugeSize = isSmallScreen ? 180 : 220;
 
   const handleCodeChange = useCallback((next: string) => {
     setCode(next);
@@ -55,6 +110,7 @@ function Auditor(): JSX.Element {
   const handleResetAll = useCallback(() => {
     cancel();
     reset();
+    setActiveReport(null);
   }, [cancel, reset]);
 
   const lineCount = useMemo(
@@ -99,7 +155,7 @@ function Auditor(): JSX.Element {
 
       <section
         aria-label="Code editor"
-        className="flex min-h-[480px] flex-1 flex-col overflow-hidden rounded-2xl border border-border-subtle bg-surface-panel shadow-panel"
+        className="flex min-h-[420px] flex-1 flex-col overflow-hidden rounded-2xl border border-border-subtle bg-surface-panel shadow-panel"
       >
         <EditorToolbar
           filename={SAMPLE_CONTRACT_NAME}
@@ -149,148 +205,204 @@ function Auditor(): JSX.Element {
         </div>
       )}
 
-      {isComplete && report && (
-        <ReportReadyCard report={report} onRunAnother={handleResetAll} />
+      {showReport && displayedReport && (
+        <AuditReport
+          report={displayedReport}
+          onRunAnother={handleResetAll}
+          gaugeSize={gaugeSize}
+        />
       )}
     </div>
   );
 }
 
-interface ReportReadyCardProps {
+interface AuditReportProps {
   report: Report;
   onRunAnother: () => void;
+  /** Responsive diameter for the RiskScoreGauge (smaller on phones). */
+  gaugeSize: number;
 }
 
 /**
- * Slim card shown after a scan completes. For AC-5 it surfaces just
- * the headline numbers (risk score + finding counts + summary) and
- * stubs out the full Audit Report — that lands in AC-6. The
- * "View full report" button is intentionally a no-op for now and
- * will be wired to the report pane in the next round.
+ * Polished audit report panel. Renders the four required sections:
+ *   1. Risk Score gauge (recharts radial bar, colour-coded by band)
+ *   2. Vulnerabilities table (grouped by severity, collapsible)
+ *   3. Detailed security suggestions (collapsible cards, line range + remediation)
+ *   4. Gas-optimization tips (bulleted list with estimated gas savings)
  */
-function ReportReadyCard({
-  report,
-  onRunAnother,
-}: ReportReadyCardProps): JSX.Element {
-  const counts = useMemo(() => {
-    const acc: Record<Severity, number> = {
-      critical: 0,
-      medium: 0,
-      low: 0,
-      info: 0,
-    };
-    for (const v of report.vulnerabilities) acc[v.severity] += 1;
-    return acc;
+function AuditReport({ report, onRunAnother, gaugeSize }: AuditReportProps): JSX.Element {
+  const vulnerabilitiesById = useMemo<Record<string, Vulnerability>>(() => {
+    const map: Record<string, Vulnerability> = {};
+    for (const v of report.vulnerabilities) map[v.id] = v;
+    return map;
   }, [report.vulnerabilities]);
-
-  const score = report.riskScore;
-  const scoreTone =
-    score >= 70
-      ? 'text-risk-critical'
-      : score >= 40
-        ? 'text-risk-medium'
-        : 'text-risk-low';
 
   return (
     <section
-      aria-label="Report ready"
-      className="flex flex-col gap-4 rounded-2xl border border-border-subtle bg-surface-panel p-5 shadow-panel sm:p-6"
+      aria-label="Audit report"
+      className="flex flex-col gap-5 rounded-2xl border border-border-subtle bg-surface-panel p-5 shadow-panel sm:p-6"
     >
-      <header className="flex flex-wrap items-center justify-between gap-3">
-        <div className="flex items-center gap-2">
-          <span
-            aria-hidden="true"
-            className="grid h-9 w-9 place-items-center rounded-lg bg-risk-low/15 text-risk-low ring-1 ring-risk-low/30"
-          >
-            <FileBadge2 className="h-4 w-4" />
-          </span>
-          <div>
-            <p className="text-[11px] font-medium uppercase tracking-widest text-text-muted">
-              Pipeline
-            </p>
-            <h3 className="text-base font-semibold text-text-primary">
-              Report ready
-            </h3>
-          </div>
-        </div>
-        <span className="font-mono text-xs text-text-muted">
-          {(report.totalDurationMs / 1000).toFixed(1)}s · {report.codeHash}
-        </span>
-      </header>
+      <ReportHeader report={report} onRunAnother={onRunAnother} />
 
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-[auto_1fr] sm:items-center">
-        <div className="flex flex-col items-center justify-center rounded-xl border border-border-subtle bg-surface-elevated/50 px-6 py-4">
-          <p className="text-[11px] font-medium uppercase tracking-widest text-text-muted">
-            Risk score
-          </p>
-          <p className={`mt-1 font-mono text-3xl font-semibold ${scoreTone}`}>
-            {score}
-          </p>
-          <p className="font-mono text-[11px] text-text-muted">/ 100</p>
-        </div>
+      <ReportSummary report={report} />
 
-        <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
-          <SeverityTile label="Critical" value={counts.critical} tone="critical" />
-          <SeverityTile label="Medium" value={counts.medium} tone="medium" />
-          <SeverityTile label="Low" value={counts.low} tone="low" />
-          <SeverityTile label="Info" value={counts.info} tone="info" />
+      <Section
+        Icon={GaugeIcon}
+        title="Risk score"
+        subtitle="Weighted sum of all findings, clamped to 0-100 and colour-coded by band."
+      >
+        <div className="flex flex-col items-center gap-4 sm:flex-row sm:items-center sm:justify-around">
+          <RiskScoreGauge score={report.riskScore} size={gaugeSize} />
+          <SeverityBreakdown vulnerabilities={report.vulnerabilities} />
         </div>
-      </div>
+      </Section>
 
-      <p className="rounded-xl border border-border-subtle bg-surface-elevated/40 p-3 text-sm text-text-secondary">
-        {report.summary}
-      </p>
+      <Section
+        Icon={ListChecks}
+        title="Vulnerabilities"
+        subtitle="Grouped by severity. Click a severity band to collapse it."
+      >
+        <VulnerabilityTable vulnerabilities={report.vulnerabilities} />
+      </Section>
 
-      <div className="flex flex-col gap-2 border-t border-border-subtle pt-4 sm:flex-row sm:items-center sm:justify-between">
-        <p className="text-xs text-text-muted">
-          Full audit report (gauge, vulnerability table, suggestions, gas
-          tips) lands in <span className="font-mono">AC-6</span>.
-        </p>
-        <div className="flex items-center gap-2">
-          <button
-            type="button"
-            onClick={onRunAnother}
-            className="focus-ring inline-flex items-center gap-1.5 rounded-lg border border-border-subtle bg-surface-muted px-3.5 py-2 text-sm font-medium text-text-secondary transition hover:bg-surface-elevated hover:text-text-primary"
-          >
-            <X aria-hidden="true" className="h-4 w-4" />
-            <span>Run another scan</span>
-          </button>
-          <button
-            type="button"
-            disabled
-            title="Full report lands in AC-6"
-            className="focus-ring inline-flex cursor-not-allowed items-center gap-1.5 rounded-lg bg-brand-700/60 px-3.5 py-2 text-sm font-medium text-white/80"
-          >
-            <Sparkles aria-hidden="true" className="h-4 w-4" />
-            <span>View full report</span>
-          </button>
-        </div>
-      </div>
+      <Section
+        Icon={Lightbulb}
+        title="Security suggestions"
+        subtitle="One remediation card per finding. Click to expand the suggested fix."
+      >
+        <SuggestionCard
+          suggestions={report.suggestions}
+          vulnerabilitiesById={vulnerabilitiesById}
+        />
+      </Section>
+
+      <Section
+        Icon={Fuel}
+        title="Gas optimization tips"
+        subtitle="Per-call savings, with optional code snippets illustrating the change."
+      >
+        <GasTipsList tips={report.gasTips} />
+      </Section>
     </section>
   );
 }
 
-interface SeverityTileProps {
-  label: string;
-  value: number;
-  tone: Severity;
+interface ReportHeaderProps {
+  report: Report;
+  onRunAnother: () => void;
 }
 
-const SEVERITY_TILE_TONE: Readonly<Record<Severity, string>> = {
-  critical: 'text-risk-critical',
-  medium: 'text-risk-medium',
-  low: 'text-risk-low',
-  info: 'text-risk-info',
-};
-
-function SeverityTile({ label, value, tone }: SeverityTileProps): JSX.Element {
+function ReportHeader({ report, onRunAnother }: ReportHeaderProps): JSX.Element {
   return (
-    <div className="rounded-xl border border-border-subtle bg-surface-elevated/50 p-3 text-center">
-      <p className="text-[11px] font-medium uppercase tracking-widest text-text-muted">
-        {label}
+    <header className="flex flex-wrap items-center justify-between gap-3">
+      <div className="flex items-center gap-2">
+        <span
+          aria-hidden="true"
+          className="grid h-9 w-9 place-items-center rounded-lg bg-risk-low/15 text-risk-low ring-1 ring-risk-low/30"
+        >
+          <FileBadge2 className="h-4 w-4" />
+        </span>
+        <div>
+          <p className="text-[11px] font-medium uppercase tracking-widest text-text-muted">
+            Audit report
+          </p>
+          <h3 className="text-base font-semibold text-text-primary">Scan complete</h3>
+        </div>
+      </div>
+      <div className="flex items-center gap-2">
+        <span className="font-mono text-xs text-text-muted">
+          {(report.totalDurationMs / 1000).toFixed(1)}s · {report.codeHash}
+        </span>
+        <button
+          type="button"
+          onClick={onRunAnother}
+          className="focus-ring inline-flex items-center gap-1.5 rounded-lg border border-border-subtle bg-surface-muted px-3.5 py-2 text-sm font-medium text-text-secondary transition hover:bg-surface-elevated hover:text-text-primary"
+        >
+          <X aria-hidden="true" className="h-4 w-4" />
+          <span>Run another scan</span>
+        </button>
+      </div>
+    </header>
+  );
+}
+
+function ReportSummary({ report }: { report: Report }): JSX.Element {
+  return (
+    <div className="rounded-xl border border-border-subtle bg-surface-elevated/40 p-4">
+      <p className="flex items-baseline gap-2 text-[11px] font-medium uppercase tracking-widest text-text-muted">
+        <Sparkles aria-hidden="true" className="h-3 w-3" />
+        <span>AI summary</span>
       </p>
-      <p className={`mt-1 font-mono text-xl font-semibold ${SEVERITY_TILE_TONE[tone]}`}>
-        {value}
+      <p className="mt-2 text-sm text-text-secondary">{report.summary}</p>
+    </div>
+  );
+}
+
+interface SectionProps {
+  Icon: typeof GaugeIcon;
+  title: string;
+  subtitle: string;
+  children: React.ReactNode;
+}
+
+function Section({ Icon, title, subtitle, children }: SectionProps): JSX.Element {
+  return (
+    <section className="flex flex-col gap-3">
+      <div className="flex items-baseline gap-2">
+        <Icon aria-hidden="true" className="h-4 w-4 shrink-0 text-brand-300" />
+        <h4 className="text-sm font-semibold text-text-primary">{title}</h4>
+        <p className="text-xs text-text-muted">— {subtitle}</p>
+      </div>
+      {children}
+    </section>
+  );
+}
+
+interface SeverityBreakdownProps {
+  vulnerabilities: readonly Vulnerability[];
+}
+
+function SeverityBreakdown({ vulnerabilities }: SeverityBreakdownProps): JSX.Element {
+  const counts = useMemo<Record<Severity, number>>(() => {
+    const acc: Record<Severity, number> = { critical: 0, medium: 0, low: 0, info: 0 };
+    for (const v of vulnerabilities) acc[v.severity] += 1;
+    return acc;
+  }, [vulnerabilities]);
+
+  const total = vulnerabilities.length;
+  const labels: ReadonlyArray<{ severity: Severity; label: string }> = [
+    { severity: 'critical', label: 'Critical' },
+    { severity: 'medium', label: 'Medium' },
+    { severity: 'low', label: 'Low' },
+    { severity: 'info', label: 'Info' },
+  ];
+
+  return (
+    <div className="grid w-full grid-cols-2 gap-2 sm:max-w-xs">
+      {labels.map(({ severity, label }) => {
+        const value = counts[severity];
+        const tone =
+          severity === 'critical'
+            ? 'text-risk-critical'
+            : severity === 'medium'
+              ? 'text-risk-medium'
+              : severity === 'low'
+                ? 'text-risk-low'
+                : 'text-risk-info';
+        return (
+          <div
+            key={severity}
+            className="rounded-xl border border-border-subtle bg-surface-elevated/50 p-3 text-center"
+          >
+            <p className="text-[11px] font-medium uppercase tracking-widest text-text-muted">
+              {label}
+            </p>
+            <p className={`mt-1 font-mono text-xl font-semibold ${tone}`}>{value}</p>
+          </div>
+        );
+      })}
+      <p className="col-span-2 text-center font-mono text-[11px] text-text-muted">
+        {total} {total === 1 ? 'finding' : 'findings'} total
       </p>
     </div>
   );

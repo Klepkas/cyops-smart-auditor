@@ -1,5 +1,5 @@
 import { useLocation, useNavigate } from 'react-router-dom';
-import { Plus, ChevronRight, PanelLeftClose, PanelLeftOpen } from 'lucide-react';
+import { Plus, ChevronRight, PanelLeftClose, PanelLeftOpen, Menu } from 'lucide-react';
 import { useMediaQuery } from '../../hooks/useMediaQuery';
 import { useUIState } from '../../hooks/useUIState';
 
@@ -44,17 +44,22 @@ function metaFor(pathname: string): RouteMeta {
 
 const DESKTOP_QUERY = '(min-width: 1024px)';
 
+interface TopbarProps {
+  /** Called when the hamburger button is tapped on mobile. */
+  onOpenMobileNav: () => void;
+}
+
 /**
- * Top bar — route-aware title + breadcrumb on the left, sidebar collapse
- * chevron in the middle, and a "New scan" primary CTA on the right.
+ * Top bar — route-aware title + breadcrumb on the left, sidebar
+ * collapse / hamburger toggle in the middle, and a "New scan"
+ * primary CTA on the right.
  *
- * The chevron is the manual collapse toggle called out in the AC-3 spec
- * — it lifts a `userSidebarCollapsed` override into `useUIState`, which
- * the `Sidebar` honours over the media query. The icon shown is the
- * opposite of the *effective* current state (clicking the close icon
- * collapses; clicking the open icon expands).
+ * Below 1024px the rail is replaced by the mobile drawer, so the
+ * leftmost button is a hamburger (`Menu`) that opens it. At
+ * 1024px+ the hamburger is hidden and the chevron takes its place
+ * (so the toggle remains useful on tablet+ / desktop).
  */
-function Topbar(): JSX.Element {
+function Topbar({ onOpenMobileNav }: TopbarProps): JSX.Element {
   const location = useLocation();
   const navigate = useNavigate();
   const meta = metaFor(location.pathname);
@@ -62,23 +67,34 @@ function Topbar(): JSX.Element {
   const isDesktop = useMediaQuery(DESKTOP_QUERY);
   const { userSidebarCollapsed, toggleSidebarCollapsed } = useUIState();
 
-  // The toggle is only useful on wide screens. Below 1024px the rail is
-  // always icon-only, so hide the button to avoid implying it does
-  // something visible.
-  const showToggle = isDesktop;
+  // Below 1024px the rail is replaced by a drawer, so show a
+  // hamburger. At/above 1024px show the chevron (existing AC-3
+  // behaviour).
+  const showHamburger = !isDesktop;
+  const showChevron = isDesktop;
 
   // Mirrors the Sidebar's effective collapsed state for icon picking.
-  const isExpandedNow =
-    isDesktop && userSidebarCollapsed !== true;
+  const isExpandedNow = isDesktop && userSidebarCollapsed !== true;
   const ToggleIcon = isExpandedNow ? PanelLeftClose : PanelLeftOpen;
   const toggleLabel = isExpandedNow
     ? 'Collapse sidebar to icons'
     : 'Expand sidebar with labels';
 
   return (
-    <header className="sticky top-0 z-20 flex h-16 shrink-0 items-center justify-between gap-4 border-b border-border-subtle bg-surface/85 px-6 backdrop-blur supports-[backdrop-filter]:bg-surface/70">
+    <header className="sticky top-0 z-20 flex h-16 shrink-0 items-center justify-between gap-3 border-b border-border-subtle bg-surface/85 px-4 backdrop-blur supports-[backdrop-filter]:bg-surface/70 sm:px-6">
       <div className="flex min-w-0 items-center gap-2">
-        {showToggle && (
+        {showHamburger && (
+          <button
+            type="button"
+            onClick={onOpenMobileNav}
+            title="Open navigation"
+            aria-label="Open navigation"
+            className="focus-ring inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-text-muted transition hover:bg-surface-elevated hover:text-text-primary"
+          >
+            <Menu aria-hidden="true" className="h-5 w-5" />
+          </button>
+        )}
+        {showChevron && (
           <button
             type="button"
             onClick={toggleSidebarCollapsed}
@@ -124,7 +140,8 @@ function Topbar(): JSX.Element {
             className="focus-ring inline-flex items-center gap-1.5 rounded-lg bg-brand-500 px-3 py-1.5 text-sm font-medium text-white shadow-panel transition hover:bg-brand-600 active:bg-brand-700"
           >
             <Plus aria-hidden="true" className="h-4 w-4" />
-            <span>New scan</span>
+            <span className="hidden sm:inline">New scan</span>
+            <span className="sm:hidden">Scan</span>
           </button>
         )}
       </div>

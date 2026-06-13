@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useReducer, useRef } from 'react';
-import { runScan } from '../lib/scanEngine';
+import { runScan, type RunScanOptions } from '../lib/scanEngine';
 import { AGENTS, AGENTS_BY_ID } from '../lib/agentConfig';
 import type {
   AgentId,
@@ -44,6 +44,8 @@ export interface UseScanResult extends UseScanState {
   isActive: boolean;
   /** Per-agent live lookup keyed by id. */
   byId: Readonly<Record<AgentId, AgentState>>;
+  /** Per-call override (sensitivity + solidityVersion). Set via the hook's options arg. */
+  setScanOptions: (options: RunScanOptions) => void;
 }
 
 type Action =
@@ -172,6 +174,16 @@ export function useScan(): UseScanResult {
   const controllerRef = useRef<AbortController | null>(null);
   const startTimeRef = useRef<number>(0);
   const rafRef = useRef<number | null>(null);
+  const optionsRef = useRef<RunScanOptions>({});
+
+  /**
+   * Set the engine options used for the next call to `start()`. The
+   * Auditor calls this whenever the user changes a setting so the
+   * next scan uses the new sensitivity / Solidity version.
+   */
+  const setScanOptions = useCallback((next: RunScanOptions): void => {
+    optionsRef.current = next;
+  }, []);
 
   /**
    * Cancel a running scan. Idempotent: calling on an already-cancelled
@@ -210,7 +222,12 @@ export function useScan(): UseScanResult {
       };
       rafRef.current = window.requestAnimationFrame(tick);
 
-      runScan(code, (update) => dispatch({ type: 'progress', update }), controller.signal)
+      runScan(
+        code,
+        (update) => dispatch({ type: 'progress', update }),
+        controller.signal,
+        optionsRef.current,
+      )
         .then((report) => {
           // If `cancel` was called between the resolve and this microtask
           // the dispatch will be a no-op for the elapsed counter.
@@ -281,5 +298,6 @@ export function useScan(): UseScanResult {
     reset,
     isActive: state.isScanning,
     byId,
+    setScanOptions,
   };
 }
