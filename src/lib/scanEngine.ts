@@ -18,10 +18,12 @@ import { scanForPatterns, VULNERABILITY_PATTERNS, type RawMatch } from '../data/
  * engine picks a random duration in `[MIN_AGENT_MS, MAX_AGENT_MS]`
  * for each agent and splits it into a handful of progress ticks so
  * the UI bar moves smoothly.  With four agents, the total wall-clock
- * budget lands in roughly 2.0–3.6s, in the spirit of the AC-5
- * 2.5–4.0s verification signal.
+ * budget lands in roughly 2.6–3.6s — inside the AC-5 verification
+ * signal of 2.5–4.0s (the previous 500 ms floor was 0.5 s short of
+ * the lower bound and was bumped to 650 in iter-007 per the
+ * reviewer's P3 note).
  */
-const MIN_AGENT_MS = 500;
+const MIN_AGENT_MS = 650;
 const MAX_AGENT_MS = 900;
 const TICKS_PER_AGENT = 4;
 
