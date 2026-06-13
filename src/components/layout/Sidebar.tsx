@@ -1,6 +1,7 @@
 import { NavLink } from 'react-router-dom';
 import { LayoutDashboard, ShieldCheck, History, Settings as SettingsIcon } from 'lucide-react';
 import { useMediaQuery } from '../../hooks/useMediaQuery';
+import { useUIState } from '../../hooks/useUIState';
 
 interface NavItem {
   to: string;
@@ -25,25 +26,37 @@ const DESKTOP_QUERY = '(min-width: 1024px)';
 /**
  * Persistent left sidebar.
  *
- * Behaviour:
- *   - >= 1024px  → expanded (240 px) with icon + label.
- *   - <  1024px  → icon-only rail (72 px) — label fades out so the layout
- *                  still has room for the editor / report cards.
+ * Collapse rules (last one wins):
+ *   1. The viewport is < 1024px → icon-only rail (auto).
+ *   2. The user manually toggled the rail via the topbar chevron and
+ *      that override is stored in `localStorage` → honour the override
+ *      regardless of viewport.
+ *   3. Otherwise → expanded at >= 1024px.
  *
  * Active route gets a brand-tinted background plus a 2 px brand left
  * border. Inactive items are dim and brighten on hover.
  */
 function Sidebar(): JSX.Element {
-  // `isDesktop` is the canonical source of truth for the rail width.
-  // `lg:` Tailwind breakpoints would do the same job for layout, but the
-  // sidebar also needs to swap text content, which CSS alone cannot do.
+  // `isDesktop` is the auto-collapse rule (no user override).
   const isDesktop = useMediaQuery(DESKTOP_QUERY);
+  const { userSidebarCollapsed } = useUIState();
 
-  const widthClass = isDesktop ? 'w-60' : 'w-[72px]';
-  const labelClass = isDesktop ? 'opacity-100' : 'opacity-0 pointer-events-none';
+  // Effective collapsed state: an explicit user override beats the media
+  // query. `null` = follow the media query.
+  const userWantsCollapsed = userSidebarCollapsed === true;
+  const userWantsExpanded = userSidebarCollapsed === false;
+  const collapsed = userWantsCollapsed || (!userWantsExpanded && !isDesktop);
+  const isDesktopAndNotOverridden = isDesktop && userSidebarCollapsed === null;
+  const showLabels = isDesktopAndNotOverridden;
+
+  const widthClass = showLabels ? 'w-60' : 'w-[72px]';
+  const labelClass = showLabels
+    ? 'opacity-100'
+    : 'opacity-0 pointer-events-none w-0 overflow-hidden';
 
   return (
     <aside
+      data-collapsed={collapsed ? 'true' : 'false'}
       aria-label="Primary"
       className={[
         'sticky top-0 z-30 flex h-screen shrink-0 flex-col border-r border-border-subtle bg-surface-panel',
@@ -85,7 +98,7 @@ function Sidebar(): JSX.Element {
             <li key={to}>
               <NavLink
                 to={to}
-                title={isDesktop ? undefined : label}
+                title={showLabels ? undefined : label}
                 aria-label={label}
                 className={({ isActive }) =>
                   [
@@ -108,7 +121,9 @@ function Sidebar(): JSX.Element {
                     <Icon
                       className={[
                         'h-5 w-5 shrink-0 transition-colors',
-                        isActive ? 'text-brand-300' : 'text-text-muted group-hover:text-text-primary',
+                        isActive
+                          ? 'text-brand-300'
+                          : 'text-text-muted group-hover:text-text-primary',
                       ].join(' ')}
                     />
                     <span
@@ -127,7 +142,7 @@ function Sidebar(): JSX.Element {
       <div className="border-t border-border-subtle p-3">
         <div
           className={`flex items-center gap-3 rounded-lg bg-surface-elevated p-2.5 ${
-            isDesktop ? '' : 'justify-center'
+            showLabels ? '' : 'justify-center'
           }`}
         >
           <span
