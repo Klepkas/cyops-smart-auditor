@@ -1,9 +1,8 @@
-# Clack Harness project
+# Smart Contract Auditor
 node_modules/
 dist/
 build/
 coverage/
-.vite/
 .vite/
 __pycache__/
 *.py[cod]
