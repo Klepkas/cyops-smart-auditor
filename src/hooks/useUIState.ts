@@ -50,14 +50,19 @@ function writeState(state: UIState): void {
 
 export interface UseUIStateResult {
   userSidebarCollapsed: boolean | null;
-  setUserSidebarCollapsed: (next: boolean | null) => void;
   toggleSidebarCollapsed: () => void;
 }
 
 /**
  * Persistence + accessor for the small UI-preference state the app keeps
- * outside of routing. Used by the Sidebar to honour a manual collapse /
- * expand that survives reloads (AC-3 P2 follow-up).
+ * outside of routing. Used by the Topbar's collapse chevron to honour a
+ * manual collapse / expand that survives reloads (AC-3 P2 follow-up).
+ *
+ * Note: the Sidebar itself does not currently consume the persisted
+ * `userSidebarCollapsed` flag — the desktop rail renders at its default
+ * expanded width regardless. The flag drives only the Topbar's chevron
+ * icon. Wiring the Sidebar to actually apply the flag is tracked as a
+ * future iteration.
  */
 export function useUIState(): UseUIStateResult {
   const [state, setState] = useState<UIState>(readState);
@@ -72,14 +77,6 @@ export function useUIState(): UseUIStateResult {
     return () => window.removeEventListener('storage', onStorage);
   }, []);
 
-  const setUserSidebarCollapsed = useCallback((next: boolean | null): void => {
-    setState((prev) => {
-      const merged: UIState = { ...prev, userSidebarCollapsed: next };
-      writeState(merged);
-      return merged;
-    });
-  }, []);
-
   const toggleSidebarCollapsed = useCallback((): void => {
     setState((prev) => {
       const current = prev.userSidebarCollapsed ?? false;
@@ -91,7 +88,6 @@ export function useUIState(): UseUIStateResult {
 
   return {
     userSidebarCollapsed: state.userSidebarCollapsed,
-    setUserSidebarCollapsed,
     toggleSidebarCollapsed,
   };
 }

@@ -53,21 +53,12 @@ export const SEVERITY_META: Readonly<Record<Severity, SeverityMeta>> = {
   },
 };
 
-export function severityMeta(severity: Severity): SeverityMeta {
-  return SEVERITY_META[severity];
-}
-
-/** The risk-score band a 0-100 score falls into. */
-export type RiskBand = 'low' | 'medium' | 'critical';
-
-export interface RiskBandMeta {
-  readonly band: RiskBand;
+export function riskBandFor(score: number): {
+  readonly band: 'low' | 'medium' | 'critical';
   readonly label: string;
   readonly textClass: string;
   readonly hex: string;
-}
-
-export function riskBandFor(score: number): RiskBandMeta {
+} {
   if (score >= 70) {
     return {
       band: 'critical',
